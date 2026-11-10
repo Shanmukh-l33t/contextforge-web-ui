@@ -18,6 +18,9 @@ export interface AgentCardSkill {
   name: string;
   description?: string;
   tags?: string[];
+  examples?: string[];
+  inputModes?: string[];
+  outputModes?: string[];
 }
 
 export interface AgentCardInterface {
@@ -47,7 +50,17 @@ export interface AgentCard {
   securitySchemes?: Record<string, Record<string, Record<string, unknown>>>;
   /** Alternatives: any one requirement, each naming schemes (with scopes) that must all be satisfied. */
   securityRequirements?: Array<{ schemes?: Record<string, { list?: string[] }> }>;
-  capabilities?: Record<string, unknown>;
+  capabilities?: {
+    streaming?: boolean;
+    pushNotifications?: boolean;
+    extensions?: unknown[];
+    [key: string]: unknown;
+  };
+  /** Media types the agent accepts and returns unless a skill says otherwise. */
+  defaultInputModes?: string[];
+  defaultOutputModes?: string[];
+  /** Present when the card is signed. The gateway does not verify the signature. */
+  signatures?: unknown[];
 }
 
 /** Credential-free `A2AAgentCreate` fields derived from a card. */

@@ -3,22 +3,18 @@ import { BasicAuth } from "@/components/mcp-servers/BasicAuth";
 import { BearerTokenAuth } from "@/components/mcp-servers/BearerTokenAuth";
 import { CustomHeadersAuth } from "@/components/mcp-servers/CustomHeadersAuth";
 import { QueryParameterAuth } from "@/components/mcp-servers/QueryParameterAuth";
-import { Field } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Textarea } from "@/components/ui/textarea";
 import type { ConnectAgentFormState } from "@/hooks/useConnectAgentForm";
 import { VisibilityFields } from "./VisibilityFields";
+import { TextField } from "./agentFormParts";
+import { TagsAndDescriptionFields } from "./TagsAndDescriptionFields";
 import {
   AGENT_AUTH_TYPES,
   PROTOCOL_VERSIONS,
   type AgentAuthType,
   type ProtocolVersion,
 } from "./manualAgent";
-
-const INPUT_CLASS =
-  "rounded-md border-neutral-300 px-4 text-sm text-neutral-900 shadow-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 placeholder:text-neutral-400 dark:border-neutral-700 dark:text-neutral-100 dark:placeholder:text-neutral-500";
 
 /** Tab label ids reuse the MCP server form's, so the two forms word the auth types alike. */
 const AUTH_TAB_LABEL_IDS: Record<AgentAuthType, string> = {
@@ -76,51 +72,6 @@ function AuthTypeTabs({
         ))}
       </div>
     </div>
-  );
-}
-
-function TextField({
-  id,
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-  required,
-  error,
-  info,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  type?: string;
-  required?: boolean;
-  error?: string;
-  info?: string;
-}) {
-  return (
-    <Field
-      id={id}
-      label={label}
-      required={required}
-      error={error}
-      info={info}
-      labelProps={info ? { className: "inline-flex items-center gap-0.5" } : undefined}
-    >
-      {(controlProps) => (
-        <Input
-          {...controlProps}
-          type={type}
-          autoComplete="off"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={placeholder}
-          className={INPUT_CLASS}
-        />
-      )}
-    </Field>
   );
 }
 
@@ -318,34 +269,13 @@ export function ManualAgentFields({ form }: { form: ConnectAgentFormState }) {
         </p>
       )}
 
-      <div className="space-y-4">
-        <TextField
-          id="agent-manual-tags"
-          label={intl.formatMessage({ id: "agents.connect.manual.tags.label" })}
-          placeholder={intl.formatMessage({ id: "agents.connect.manual.tags.placeholder" })}
-          value={form.manualTags}
-          onChange={form.setManualTags}
-        />
-
-        {/* The design shows the description without a visible label; keep one for screen readers. */}
-        <Field
-          id="agent-manual-description"
-          label={intl.formatMessage({ id: "agents.connect.manual.description.label" })}
-          labelProps={{ className: "sr-only" }}
-        >
-          {(controlProps) => (
-            <Textarea
-              {...controlProps}
-              value={form.manualDescription}
-              onChange={(event) => form.setManualDescription(event.target.value)}
-              placeholder={intl.formatMessage({
-                id: "agents.connect.manual.description.placeholder",
-              })}
-              className="min-h-20 rounded-md border-neutral-300 px-4 text-sm shadow-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 dark:border-neutral-700"
-            />
-          )}
-        </Field>
-      </div>
+      <TagsAndDescriptionFields
+        idPrefix="agent-manual"
+        tags={form.manualTags}
+        onTagsChange={form.setManualTags}
+        description={form.manualDescription}
+        onDescriptionChange={form.setManualDescription}
+      />
     </div>
   );
 }
