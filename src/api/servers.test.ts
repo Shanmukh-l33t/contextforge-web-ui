@@ -447,6 +447,115 @@ describe("serversApi", () => {
 
       vi.useRealTimers();
     });
+
+    it("surfaces a provider error when the popup closes on the callback route with error params and no postMessage", async () => {
+      vi.useFakeTimers();
+      const mockAuthWindow = mockAuthPopup();
+      vi.spyOn(window, "open").mockReturnValue(mockAuthWindow);
+      mockFetch.mockResolvedValueOnce(nonceResponse());
+
+      const promise = serversApi.triggerOAuthAuthorization("server-123");
+
+      // The provider redirected back to our callback with error params, but
+      // the callback page's postMessage never reached us (opener lost, page
+      // script failed, ...). The popup then closed with no message at all.
+      mockAuthWindow.location.href =
+        "/oauth/callback?error=access_denied&error_description=User+denied+access&state=popup.xyz";
+      (mockAuthWindow as { closed: boolean }).closed = true;
+      vi.advanceTimersByTime(1000);
+
+      await expect(promise).rejects.toMatchObject({
+        name: "OAuthAuthorizationError",
+        code: "access_denied",
+        description: "User denied access",
+      });
+
+      vi.useRealTimers();
+    });
+
+    it("surfaces a provider error from the popup's final absolute callback URL", async () => {
+      vi.useFakeTimers();
+      const mockAuthWindow = mockAuthPopup();
+      vi.spyOn(window, "open").mockReturnValue(mockAuthWindow);
+      mockFetch.mockResolvedValueOnce(nonceResponse());
+
+      const promise = serversApi.triggerOAuthAuthorization("server-123");
+
+      mockAuthWindow.location.href =
+        "https://app.example.com/oauth/callback?error=server_error&error_description=Provider+failed&state=popup.xyz";
+      (mockAuthWindow as { closed: boolean }).closed = true;
+      vi.advanceTimersByTime(1000);
+
+      await expect(promise).rejects.toMatchObject({
+        name: "OAuthAuthorizationError",
+        code: "server_error",
+        description: "Provider failed",
+      });
+
+      vi.useRealTimers();
+    });
+
+    it("keeps treating a close on the authorize leg as a silent cancellation", async () => {
+      vi.useFakeTimers();
+      const mockAuthWindow = mockAuthPopup();
+      vi.spyOn(window, "open").mockReturnValue(mockAuthWindow);
+      mockFetch.mockResolvedValueOnce(nonceResponse());
+
+      const promise = serversApi.triggerOAuthAuthorization("server-123");
+
+      // The popup left toward the provider from the authorize leg and was
+      // closed there: no observable provider outcome, so this must stay a
+      // cancellation the pages discard silently.
+      mockAuthWindow.location.href = "/oauth/authorize/server-123?popup=true&nonce=test-nonce";
+      (mockAuthWindow as { closed: boolean }).closed = true;
+      vi.advanceTimersByTime(1000);
+
+      await expect(promise).rejects.toMatchObject({ name: "OAuthCancelledError" });
+
+      vi.useRealTimers();
+    });
+
+    it("keeps treating a close with an unreadable cross-origin location as a silent cancellation", async () => {
+      vi.useFakeTimers();
+      const mockAuthWindow = mockAuthPopup();
+      // Simulate the popup sitting on the provider's own origin: any location
+      // read throws, so no provider outcome is observable.
+      Object.defineProperty(mockAuthWindow, "location", {
+        get() {
+          throw new DOMException("Blocked by cross-origin policy", "SecurityError");
+        },
+      });
+      vi.spyOn(window, "open").mockReturnValue(mockAuthWindow);
+      mockFetch.mockResolvedValueOnce(nonceResponse());
+
+      const promise = serversApi.triggerOAuthAuthorization("server-123");
+
+      (mockAuthWindow as { closed: boolean }).closed = true;
+      vi.advanceTimersByTime(1000);
+
+      await expect(promise).rejects.toMatchObject({ name: "OAuthCancelledError" });
+
+      vi.useRealTimers();
+    });
+
+    it("does not surface a callback-leg close without error params as a provider error", async () => {
+      vi.useFakeTimers();
+      const mockAuthWindow = mockAuthPopup();
+      vi.spyOn(window, "open").mockReturnValue(mockAuthWindow);
+      mockFetch.mockResolvedValueOnce(nonceResponse());
+
+      const promise = serversApi.triggerOAuthAuthorization("server-123");
+
+      // Popup closed on the callback leg with only a code/state (no error
+      // params) and no postMessage: there is no provider error to surface.
+      mockAuthWindow.location.href = "/oauth/callback?code=abc123&state=popup.xyz";
+      (mockAuthWindow as { closed: boolean }).closed = true;
+      vi.advanceTimersByTime(1000);
+
+      await expect(promise).rejects.toMatchObject({ name: "OAuthCancelledError" });
+
+      vi.useRealTimers();
+    });
   });
 
   describe("updateTags", () => {
