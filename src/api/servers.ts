@@ -70,6 +70,35 @@ export class OAuthPopupBlockedError extends Error {
   }
 }
 
+/**
+ * Provider outcome readable from a popup that closed without ever sending a
+ * postMessage.
+ *
+ * RFC 6749 error redirects land on the callback route with `error` /
+ * `error_description` params, so a final URL of `/oauth/callback?error=...`
+ * is a provider failure the pages must surface (OAuthAuthorizationError),
+ * not a cancellation. A plain close on the authorize leg — or one we cannot
+ * read because the popup was on the provider's own cross-origin page —
+ * carries no observable outcome and stays a silent OAuthCancelledError.
+ *
+ * Returns null when the URL encodes no provider error.
+ */
+function oauthCallbackErrorFromUrl(href: string): OAuthAuthorizationError | null {
+  if (!href) return null;
+  let url: URL;
+  try {
+    url = new URL(href, window.location.origin);
+  } catch {
+    return null;
+  }
+  const path = url.pathname.replace(/\/+$/, "");
+  if (!path.endsWith("/oauth/callback")) return null;
+  const error = url.searchParams.get("error");
+  const errorDescription = url.searchParams.get("error_description");
+  if (!error?.trim() && !errorDescription?.trim()) return null;
+  return new OAuthAuthorizationError(error ?? undefined, errorDescription ?? undefined);
+}
+
 function openOAuthAuthorizationPopup(): Window {
   const width = 600;
   const height = 700;
@@ -287,6 +316,11 @@ export const serversApi = {
    * gesture" status popup blockers require.
    *
    * Returns a Promise that resolves on success or rejects on error / cancellation.
+   *
+   * A close with no postMessage is classified by the popup's last observable
+   * location: ending on /oauth/callback with provider error params rejects
+   * with OAuthAuthorizationError (surfaced by the pages); any other close
+   * rejects with OAuthCancelledError, which the pages discard silently.
    */
   triggerOAuthAuthorization: (
     id: string,
@@ -302,6 +336,12 @@ export const serversApi = {
       }
 
       let settled = false;
+
+      // Last same-origin URL observed on the popup. The BFF proxies /oauth/*,
+      // so the authorize and callback legs are readable while the provider's
+      // own pages throw on access. Needed to tell a provider error redirect
+      // that never posted a message apart from a deliberate user close.
+      let lastObservableUrl = "";
 
       const cleanup = () => {
         window.removeEventListener("message", messageHandler);
@@ -331,11 +371,21 @@ export const serversApi = {
       // Detect when the user closes the popup without completing OAuth.
       // 1 s is fast enough to feel responsive while not burning cycles.
       const pollInterval = setInterval(() => {
+        try {
+          const href = authWindow.location.href;
+          if (href) lastObservableUrl = href;
+        } catch {
+          // Cross-origin (the provider's own page) or a dead window: keep
+          // the last readable URL as the best observable outcome.
+        }
         if (authWindow.closed) {
           if (!settled) {
             settled = true;
             cleanup();
-            reject(new OAuthCancelledError());
+            // A close on the callback leg with provider error params is a
+            // provider failure to surface; anything else is a user close.
+            const providerError = oauthCallbackErrorFromUrl(lastObservableUrl);
+            reject(providerError ?? new OAuthCancelledError());
           }
         }
       }, 1000);
